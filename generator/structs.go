@@ -333,6 +333,8 @@ type GenOperation struct {
 
 	SuccessResponse  *GenResponse
 	SuccessResponses []GenResponse
+	FailResponse  *GenResponse
+	FailResponses []GenResponse
 	Responses        GenStatusCodeResponses
 	DefaultResponse  *GenResponse
 
