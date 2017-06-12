@@ -15,15 +15,12 @@
 package scan
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/go-openapi/loads/fmts"
 	"github.com/go-openapi/spec"
-	"gopkg.in/yaml.v2"
 )
 
 type validationBuilder interface {
@@ -40,7 +37,7 @@ type validationBuilder interface {
 
 	SetUnique(bool)
 	SetEnum(string)
-	SetDefault(string)
+	SetDefault(interface{})
 }
 
 type valueParser interface {
@@ -301,6 +298,7 @@ func (se *setEnum) Parse(lines []string) error {
 }
 
 type setDefault struct {
+	scheme  *spec.SimpleSchema
 	builder validationBuilder
 	rx      *regexp.Regexp
 }
@@ -315,7 +313,32 @@ func (sd *setDefault) Parse(lines []string) error {
 	}
 	matches := sd.rx.FindStringSubmatch(lines[0])
 	if len(matches) > 1 && len(matches[1]) > 0 {
-		sd.builder.SetDefault(matches[1])
+		if sd.scheme != nil {
+			switch strings.Trim(sd.scheme.TypeName(), "\"") {
+			case "integer", "int", "int64", "int32", "int16":
+				d, err := strconv.Atoi(matches[1])
+				if err != nil {
+					return err
+				}
+				sd.builder.SetDefault(d)
+			case "bool", "boolean":
+				b, err := strconv.ParseBool(matches[1])
+				if err != nil {
+					return err
+				}
+				sd.builder.SetDefault(b)
+			case "number", "float64", "float32":
+				b, err := strconv.ParseFloat(matches[1], 64)
+				if err != nil {
+					return err
+				}
+				sd.builder.SetDefault(b)
+			default:
+				sd.builder.SetDefault(matches[1])
+			}
+		} else {
+			sd.builder.SetDefault(matches[1])
+		}
 	}
 	return nil
 }
@@ -500,199 +523,6 @@ func (ss *setSchemes) Parse(lines []string) error {
 		}
 		ss.set(schemes)
 	}
-	return nil
-}
-
-func newYAMLBlockParser(rx *regexp.Regexp, setter func(interface{}) error) *yamlBlockParser {
-	return &yamlBlockParser{
-		set: setter,
-		rx:  rx,
-	}
-}
-
-type yamlBlockParser struct {
-	set func(interface{}) error
-	rx  *regexp.Regexp
-}
-
-func (se *yamlBlockParser) Matches(line string) bool {
-	return se.rx.MatchString(line)
-}
-
-func (se *yamlBlockParser) Parse(lines []string) error {
-	if len(lines) == 0 || (len(lines) == 1 && len(lines[0]) == 0) {
-		return nil
-	}
-
-	if lines[0] != "---" {
-		lines = append([]string{"---"}, lines...)
-	}
-
-	yamlContent := strings.Join(lines, "\n")
-	var yamlValue interface{}
-	err := yaml.Unmarshal([]byte(yamlContent), &yamlValue)
-	if err != nil {
-		return err
-	}
-
-	var jsonValue json.RawMessage
-	jsonValue, err = fmts.YAMLToJSON(yamlValue)
-	if err != nil {
-		return err
-	}
-
-	var jsonData interface{}
-	err = json.Unmarshal(jsonValue, &jsonData)
-	if err != nil {
-		return err
-	}
-
-	err = se.set(jsonData)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func newSetSecurityDefinitions(rx *regexp.Regexp, setter func(spec.SecurityDefinitions)) *setSecurityDefinitions {
-	return &setSecurityDefinitions{
-		set: setter,
-		rx:  rx,
-	}
-}
-
-type setSecurityDefinitions struct {
-	set func(spec.SecurityDefinitions)
-	rx  *regexp.Regexp
-}
-
-func (ss *setSecurityDefinitions) Matches(line string) bool {
-	return ss.rx.MatchString(line)
-}
-
-var (
-	rxSecuritySchemeType          = regexp.MustCompile(`[Tt]ype\p{Zs}*:`)
-	rxSecuritySchemeName          = regexp.MustCompile(`[Nn]ame\p{Zs}*:`)
-	rxSecuritySchemeIn            = regexp.MustCompile(`[Ii]n\p{Zs}*:`)
-	rxSecuritySchemeFlow          = regexp.MustCompile(`[Ff]low\p{Zs}*:`)
-	rxSecuritySchemeDescription   = regexp.MustCompile(`[Dd]escription\p{Zs}*:`)
-	rxSecuritySchemeAuthorization = regexp.MustCompile(`[Aa]uthorizationUrl\p{Zs}*:`)
-	rxSecuritySchemeToken         = regexp.MustCompile(`[Tt]okenUrl\p{Zs}*:`)
-)
-
-func (ss *setSecurityDefinitions) Parse(lines []string) error {
-	if len(lines) == 0 || (len(lines) == 1 && len(lines[0]) == 0) {
-		return nil
-	}
-
-	result := spec.SecurityDefinitions{}
-	var scheme spec.SecurityScheme
-	var key string
-	var tp []tagParser
-	for i := 0; i < len(lines); i++ {
-		kv := strings.SplitN(lines[i], ":", 2)
-		if len(kv) <= 1 {
-			return fmt.Errorf("invalid format for securityDefinitions: %s", lines[i])
-		}
-
-		k, v := kv[0], strings.TrimSpace(kv[1])
-
-		if v == "" {
-			if key != "" {
-				result[key] = &scheme
-			}
-			scheme = spec.SecurityScheme{}
-			key = k
-			tp = []tagParser{
-				newSingleLineTagParser("type", newSetField(rxSecuritySchemeType, setSecuritySchemeType(&scheme))),
-				newSingleLineTagParser("name", newSetField(rxSecuritySchemeName, setSecuritySchemeName(&scheme))),
-				newSingleLineTagParser("in", newSetField(rxSecuritySchemeIn, setSecuritySchemeIn(&scheme))),
-				newSingleLineTagParser("flow", newSetField(rxSecuritySchemeFlow, setSecuritySchemeFlow(&scheme))),
-				newSingleLineTagParser("description", newSetField(rxSecuritySchemeDescription, setSecuritySchemeDescription(&scheme))),
-				newSingleLineTagParser("authorizationUrl", newSetField(rxSecuritySchemeAuthorization, setSecuritySchemeAuthorizationURL(&scheme))),
-				newSingleLineTagParser("tokenUrl", newSetField(rxSecuritySchemeToken, setSecuritySchemeTokenURL(&scheme))),
-			}
-			continue
-		} else {
-			for _, p := range tp {
-				if p.Matches(lines[i]) {
-					err := p.Parse([]string{lines[i]})
-					if err != nil {
-						return err
-					}
-					break
-				}
-			}
-		}
-	}
-	if _, ok := result[key]; !ok && key != "" {
-		result[key] = &scheme
-	}
-
-	ss.set(result)
-	return nil
-}
-
-func setSecuritySchemeType(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.Type = val }
-}
-
-func setSecuritySchemeName(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.Name = val }
-}
-
-func setSecuritySchemeIn(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.In = val }
-}
-
-func setSecuritySchemeFlow(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.Flow = val }
-}
-
-func setSecuritySchemeDescription(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.Description = val }
-}
-
-func setSecuritySchemeAuthorizationURL(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.AuthorizationURL = val }
-}
-
-func setSecuritySchemeTokenURL(scheme *spec.SecurityScheme) func(string) {
-	return func(val string) { scheme.TokenURL = val }
-}
-
-func newSetField(rx *regexp.Regexp, setter func(string)) *setField {
-	return &setField{
-		rx:  rx,
-		set: setter,
-	}
-}
-
-type setField struct {
-	set func(string)
-	rx  *regexp.Regexp
-}
-
-func (sf *setField) Matches(line string) bool {
-	return sf.rx.MatchString(line)
-}
-
-func (sf *setField) Parse(lines []string) error {
-	if len(lines) == 0 || (len(lines) == 1 && len(lines[0]) == 0) {
-		return nil
-	}
-
-	var value string
-	for _, line := range lines {
-		kv := strings.SplitN(line, ":", 2)
-		if len(kv) > 1 {
-			value = strings.TrimSpace(kv[1])
-			break
-		} else {
-			return fmt.Errorf("expecting `key: value`, got key only for string: %s", line)
-		}
-	}
-	sf.set(value)
 	return nil
 }
 

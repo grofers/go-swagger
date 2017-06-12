@@ -40,7 +40,6 @@
 //     - application/xml
 //
 //     Extensions:
-//     ---
 //     x-meta-value: value
 //     x-meta-array:
 //       - value1
@@ -48,16 +47,24 @@
 //     x-meta-array-obj:
 //       - name: obj
 //         value: field
-//     ---
 //
 //     Security:
 //     - api_key:
 //
 //     SecurityDefinitions:
-//     - api_key:
+//     api_key:
 //          type: apiKey
 //          name: KEY
 //          in: header
+//     oauth2:
+//         type: oauth2
+//         authorizationUrl: /oauth2/auth
+//         tokenUrl: /oauth2/token
+//         in: header
+//         scopes:
+//           bla1: foo1
+//           bla2: foo2
+//         flow: accessCode
 //
 // swagger:meta
 package classification

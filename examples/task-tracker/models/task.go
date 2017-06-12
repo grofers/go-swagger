@@ -163,6 +163,10 @@ func (m *Task) validateAttachments(formats strfmt.Registry) error {
 		return nil
 	}
 
+	if swag.IsZero(m.Attachments) { // not required
+		return nil
+	}
+
 	for k := range m.Attachments {
 
 		if swag.IsZero(m.Attachments[k]) { // not required
@@ -182,6 +186,10 @@ func (m *Task) validateAttachments(formats strfmt.Registry) error {
 }
 
 func (m *Task) validateComments(formats strfmt.Registry) error {
+
+	if swag.IsZero(m.Comments) { // not required
+		return nil
+	}
 
 	for i := 0; i < len(m.Comments); i++ {
 
@@ -206,6 +214,10 @@ func (m *Task) validateComments(formats strfmt.Registry) error {
 
 func (m *Task) validateLastUpdatedBy(formats strfmt.Registry) error {
 
+	if swag.IsZero(m.LastUpdatedBy) { // not required
+		return nil
+	}
+
 	if m.LastUpdatedBy != nil {
 
 		if err := m.LastUpdatedBy.Validate(formats); err != nil {
@@ -221,6 +233,10 @@ func (m *Task) validateLastUpdatedBy(formats strfmt.Registry) error {
 
 func (m *Task) validateReportedBy(formats strfmt.Registry) error {
 
+	if swag.IsZero(m.ReportedBy) { // not required
+		return nil
+	}
+
 	if m.ReportedBy != nil {
 
 		if err := m.ReportedBy.Validate(formats); err != nil {
@@ -231,6 +247,24 @@ func (m *Task) validateReportedBy(formats strfmt.Registry) error {
 		}
 	}
 
+	return nil
+}
+
+// MarshalBinary interface implementation
+func (m *Task) MarshalBinary() ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return swag.WriteJSON(m)
+}
+
+// UnmarshalBinary interface implementation
+func (m *Task) UnmarshalBinary(b []byte) error {
+	var res Task
+	if err := swag.ReadJSON(b, &res); err != nil {
+		return err
+	}
+	*m = res
 	return nil
 }
 
@@ -298,5 +332,23 @@ func (m *TaskAttachmentsAnon) validateDescription(formats strfmt.Registry) error
 		return err
 	}
 
+	return nil
+}
+
+// MarshalBinary interface implementation
+func (m *TaskAttachmentsAnon) MarshalBinary() ([]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return swag.WriteJSON(m)
+}
+
+// UnmarshalBinary interface implementation
+func (m *TaskAttachmentsAnon) UnmarshalBinary(b []byte) error {
+	var res TaskAttachmentsAnon
+	if err := swag.ReadJSON(b, &res); err != nil {
+		return err
+	}
+	*m = res
 	return nil
 }

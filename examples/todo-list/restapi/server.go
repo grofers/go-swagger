@@ -243,7 +243,7 @@ func (s *Server) hasScheme(scheme string) bool {
 // Serve the api
 func (s *Server) Serve() (err error) {
 	if !s.hasListeners {
-		if err := s.Listen(); err != nil {
+		if err = s.Listen(); err != nil {
 			return err
 		}
 	}
@@ -268,7 +268,7 @@ func (s *Server) Serve() (err error) {
 			domainSocket.Timeout = s.CleanupTimeout
 		}
 
-		configureServer(domainSocket, "unix")
+		configureServer(domainSocket, "unix", string(s.SocketPath))
 
 		wg.Add(1)
 		s.Logf("Serving todo list at unix://%s", s.SocketPath)
@@ -284,6 +284,8 @@ func (s *Server) Serve() (err error) {
 	if s.hasScheme(schemeHTTP) {
 		httpServer := &graceful.Server{Server: new(http.Server)}
 		httpServer.MaxHeaderBytes = int(s.MaxHeaderSize)
+		httpServer.ReadTimeout = s.ReadTimeout
+		httpServer.WriteTimeout = s.WriteTimeout
 		httpServer.SetKeepAlivesEnabled(int64(s.KeepAlive) > 0)
 		httpServer.TCPKeepAlive = s.KeepAlive
 		if s.ListenLimit > 0 {
@@ -297,7 +299,7 @@ func (s *Server) Serve() (err error) {
 		httpServer.Handler = s.handler
 		httpServer.LogFunc = s.Logf
 
-		configureServer(httpServer, "http")
+		configureServer(httpServer, "http", s.httpServerL.Addr().String())
 
 		wg.Add(1)
 		s.Logf("Serving todo list at http://%s", s.httpServerL.Addr())
@@ -382,7 +384,7 @@ func (s *Server) Serve() (err error) {
 			}
 		}
 
-		configureServer(httpsServer, "https")
+		configureServer(httpsServer, "https", s.httpsServerL.Addr().String())
 
 		wg.Add(1)
 		s.Logf("Serving todo list at https://%s", s.httpsServerL.Addr())
